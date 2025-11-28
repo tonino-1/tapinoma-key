@@ -1,5 +1,8 @@
 import streamlit as st
 
+# --- CONFIGURAZIONE PAGINA (Deve essere la prima istruzione Streamlit) ---
+st.set_page_config(page_title="Tapinoma ID Key", layout="wide")
+
 class TapinomaKey:
     def __init__(self):
         self.logs = []
@@ -9,14 +12,25 @@ class TapinomaKey:
 
     def solve(self, inputs_um):
         """
-        inputs_um: Dizionario con misure in MICROMETRI (numeri interi o float)
-        Le formule discriminanti (LDA) dell'articolo richiedono MILLIMETRI.
-        Le soglie semplici (es. SL < 475) usano i MICROMETRI.
+        inputs_um: Dizionario con misure in MICROMETRI.
         """
         
-        # Creiamo una versione in mm per le formule matematiche
-        m = {k: v / 1000.0 for k, v in inputs_um.items()}
-        # Usiamo u per i valori originali in micrometri
+        # 1. Definiamo quali variabili sono lunghezze da convertire in mm
+        # nExCly è un conteggio, IFu2 è un indice, region è testo -> NON vanno convertiti.
+        keys_to_convert = ['CL', 'CW', 'SL', 'EL', 'MW', 'ML', 'PoOc', 
+                           'dAN', 'ExCly', 'ExClyW', 'ExOcc', 'Fu2L', 'Fu2W', 'MGr', 'CS']
+        
+        # 2. Creiamo il dizionario 'm' (millimetri) e 'u' (originale)
+        m = {}
+        for k, v in inputs_um.items():
+            if k in keys_to_convert:
+                # Converte µm in mm solo se la chiave è nella lista
+                m[k] = v / 1000.0
+            else:
+                # Altrimenti copia il valore originale (es. 'region' o 'nExCly')
+                m[k] = v
+
+        # Usiamo 'u' come alias per i valori originali in micrometri (per comodità)
         u = inputs_um
 
         # --- STEP 1 ---
@@ -26,25 +40,20 @@ class TapinomaKey:
             return "Tapinoma pygmaeum"
         
         # --- STEP 2: Geografia ---
-        # Questo va gestito tramite input utente, qui assumiamo un parametro extra
-        region = u.get('region', 'west') # west = Ovest (fino a 60°E), east = Est
+        region = u.get('region', 'west') # west = Ovest, east = Est
 
         if region == 'east':
             self.log("Step 2: Regione Paleartico Orientale (60°E - 120°E)")
             # --- STEP 3 ---
-            # D3 usa mm
             D3 = 64.89*m['CL'] - 49.21*m['CW'] - 63.57*m['PoOc'] + 20.81*m['SL'] - 8.45
             if D3 < 0:
                 return "Tapinoma sinense"
             
             # --- STEP 4 -> 5 ---
-            # IFu2 è un indice (adimensionale), ExClyLW è un rapporto (adimensionale)
-            # D5 usa indici puri
             D5 = 6.469*u['IFu2'] - 1.946*u['ExClyLW'] - 11.268
             
             if D5 < 0:
                 self.log("Step 5: Specie piccole del Sichuan")
-                # ML/CS è un rapporto, non serve conversione mm
                 if (u['ML'] / u['CS']) < 1.335:
                     return "Tapinoma dabashanica n.sp."
                 else:
@@ -53,9 +62,8 @@ class TapinomaKey:
                 return "Specie asiatica non determinata (D5 > 0)"
 
         else:
-            self.log("Step 2: Regione Paleartico Occidentale (Europa/Nord Africa/Medio Oriente)")
+            self.log("Step 2: Regione Paleartico Occidentale")
             # --- STEP 7 ---
-            # Formula complessa, richiede mm
             D7 = (19.06*m['CW'] - 19.92*m['CL'] + 70.87*m['dAN'] - 78.57*m['EL'] 
                   - 0.085*u['nExCly'] + 50.25*m['ExCly'] - 110.38*m['ExOcc'] 
                   + 113.82*m['Fu2L'] - 110.03*m['Fu2W'] - 16.97*m['MW'] + 3.184)
@@ -64,7 +72,6 @@ class TapinomaKey:
                 return "Tapinoma glabrella"
             
             # Step 7b -> 8
-            # Kinburni check
             DKin = 134.18*m['Fu2L'] - 14.42*m['CW'] - 1.184
             if (u['Fu2L'] / u['CS']) < 0.109 and DKin < 0:
                  return "Tapinoma kinburni"
@@ -75,7 +82,6 @@ class TapinomaKey:
                 return "Tapinoma festae"
 
             # --- STEP 9: GRANDE BIVIO ---
-            # Gruppo Nigerrimum vs Erraticum/Simrothi
             D9 = (0.119*u['nExCly'] - 11.4*m['CL'] + 11.11*m['CW'] + 35.02*m['dAN'] 
                   + 8.62*m['EL'] - 28.01*m['ExCly'] + 3.85*m['SL'] + 32.35*m['ExClyW'] 
                   + 19.79*m['ExOcc'] + 135.45*m['Fu2L'] - 253.50*m['Fu2W'] 
@@ -127,10 +133,9 @@ class TapinomaKey:
                     D17 = (18.61*m['CL'] - 37.88*m['CW'] + 72.70*m['dAN'] 
                            + 43.16*m['EL'] - 84.94*m['ExCly'] + 0.111*u['nExCly'] 
                            + 58.18*m['MGr'] - 10.30)
-                    if D17 > 0: # Nota: il testo dice > 0 per Israel
+                    if D17 > 0:
                         return "Tapinoma israelis"
                     
-                    # Step 18
                     D18 = (47.8*m['CL'] + 121.79*m['EL'] - 21.92*m['SL'] 
                            - 39.55*m['ExClyW'] - 187.68*m['Fu2L'] - 11.68*m['ML'] 
                            - 13.5*m['MW'] + 0.16*u['nExCly'] - 6.69)
@@ -138,15 +143,10 @@ class TapinomaKey:
 
                 else: # Step 19 (Gruppo Simrothi)
                     self.log("Step 16: Gruppo Simrothi")
-                    # Discriminante Ovest vs Est
                     D19 = (0.045*u['nExCly'] + 63.44*m['PoOc'] - 35.80*m['dAN'] 
                            + 64.72*m['EL'] + 68.58*m['ExCly'] - 30.02*m['SL'] 
                            - 23.56*m['ExClyW'] + 94.64*m['ExOcc'] - 33.70*m['Fu2L'] 
                            - 96.79*m['Fu2W'] - 28.09*m['MGr'] + 2.305)
-                    
-                    # CORREZIONE LOGICA 20/21
-                    # Se D19 > 0 -> Gruppo OVEST (Simrothi/Insularis) - Step 20
-                    # Se D19 < 0 -> Gruppo EST (Phoenicaeum/Karavaievi) - Step 21
                     
                     if D19 > 0: # Step 20
                         self.log("Step 19: Ramo Occidentale")
@@ -162,9 +162,6 @@ class TapinomaKey:
                                + 83.70*m['ExClyW'] - 70.58*m['ExOcc'] - 140.86*m['Fu2L'] 
                                - 214.17*m['Fu2W'] + 79.04*m['MGr'] + 13.60*m['MW'] - 3.077)
                         return "Tapinoma phoenicaeum" if D21 < 0 else "Tapinoma karavaievi"
-
-# --- INTERFACCIA WEB (STREAMLIT) ---
-st.set_page_config(page_title="Tapinoma ID Key", layout="wide")
 
 st.title("🔑 Chiave Identificativa Tapinoma (Paleartico)")
 st.markdown("""
